@@ -4,6 +4,7 @@
 #include <linux/init.h>
 #include <linux/kdev_t.h>
 #include <linux/kernel.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 
@@ -39,6 +40,62 @@ static long long fib_sequence(long long k)
     return f[k];
 }
 
+static long long fast_doubling(long long k)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    long long f[2] = {0, 1};
+
+    if (k < 2)
+        return k;
+
+    int x = 0;
+    long long one = 1LL << 62;
+
+    while (!(k & one)) {
+        one >>= 1;
+        x++;
+    }
+    long long what = 1LL << x++;
+
+    for (int i = 0; i < x; i++) {
+        long long temp;
+        temp = f[0];
+        f[0] = f[0] * (2 * f[1] - f[0]);
+        f[1] = f[1] * f[1] + temp * temp;
+        if (k & what) {
+            f[1] = f[0] + f[1];
+            f[0] = f[1] - f[0];
+        }
+        what >>= 1;
+    }
+    return f[0];
+}
+
+static long long fast_doubling_clz(long long k)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    long long f[2] = {0, 1};
+
+    if (k < 2)
+        return k;
+
+    int x = 64 - __builtin_clzll(k);
+    long long what = 1 << x - 1;
+
+    for (int i = 0; i < x; i++) {
+        long long temp;
+        temp = f[0];
+        f[0] = f[0] * (2 * f[1] - f[0]);
+        f[1] = f[1] * f[1] + temp * temp;
+        if (k & what) {
+            f[1] = f[0] + f[1];
+            f[0] = f[1] - f[0];
+        }
+        what >>= 1;
+    }
+    return f[0];
+}
+
 static int fib_open(struct inode *inode, struct file *file)
 {
     if (!mutex_trylock(&fib_mutex)) {
@@ -69,7 +126,25 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return 1;
+    ktime_t ktime;
+    switch (size) {
+    case 0:
+        ktime = ktime_get();
+        fib_sequence(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 1:
+        ktime = ktime_get();
+        fast_doubling(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 2:
+        ktime = ktime_get();
+        fast_doubling_clz(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    }
+    return (ssize_t) ktime;
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)

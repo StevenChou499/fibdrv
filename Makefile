@@ -9,7 +9,7 @@ PWD := $(shell pwd)
 
 GIT_HOOKS := .git/hooks/applied
 
-all: $(GIT_HOOKS) client
+all: $(GIT_HOOKS) client_plot
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 $(GIT_HOOKS):
@@ -39,3 +39,17 @@ check: all
 	$(MAKE) unload
 	@diff -u out scripts/expected.txt && $(call pass)
 	@scripts/verify.py
+
+test:
+	$(MAKE) unload
+	make
+	gcc -o client_plot client_plot.c
+	$(MAKE) load
+	sudo taskset 0x3 ./client_plot > out
+	$(MAKE) unload
+	gnuplot fib_nor.gp
+	gnuplot fib_fast.gp
+	gnuplot fib_fast_clz.gp
+	gnuplot fib_comp.gp
+	#@diff -u out scripts/expected.txt && $(call pass)
+	#@scripts/verify.py

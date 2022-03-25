@@ -32,8 +32,19 @@ int main()
         printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
                                      (start.tv_sec * 1e9 + start.tv_nsec)) -
                             sz);
+
         clock_gettime(CLOCK_MONOTONIC, &start);
         sz = write(fd, buf, 1);
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
+                                     (start.tv_sec * 1e9 + start.tv_nsec)));
+        printf("%lld ", sz);
+        printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
+                                     (start.tv_sec * 1e9 + start.tv_nsec)) -
+                            sz);
+
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        sz = write(fd, buf, 2);
         clock_gettime(CLOCK_MONOTONIC, &end);
         printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
                                      (start.tv_sec * 1e9 + start.tv_nsec)));
