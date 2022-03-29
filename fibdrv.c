@@ -182,9 +182,6 @@ static long long fib_sequence_str(long long k, const char *buf)
         addBigN(&f[i - 2], &f[i - 1], &f[i]);
     }
     copy_to_user(buf, f[k].num, 120);
-    for (int i = 0; i < (k + 2); i++) {
-        vfree(f[k].num);
-    }
     vfree(f);
     return 1;
     // return f[k].digits;
