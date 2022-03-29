@@ -39,3 +39,23 @@ check: all
 	$(MAKE) unload
 	@diff -u out scripts/expected.txt && $(call pass)
 	@scripts/verify.py
+
+test:
+	$(MAKE) unload
+	make
+	$(MAKE) load
+	sudo taskset 3 ./client_plot > out
+	$(MAKE) unload
+	gnuplot fib_fast.gp
+	gnuplot fib_nor.gp
+	gnuplot fib_comp.gp
+
+what:
+	$(MAKE) unload
+	make
+	$(MAKE) load
+	gcc -o client_plot client_plot.c
+	sudo ./client_plot > out
+	$(MAKE) unload
+	@diff -u out scripts/expected.txt && $(call pass)
+	@scripts/verify.py

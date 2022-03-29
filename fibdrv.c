@@ -4,8 +4,10 @@
 #include <linux/init.h>
 #include <linux/kdev_t.h>
 #include <linux/kernel.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/vmalloc.h>
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -39,6 +41,152 @@ static long long fib_sequence(long long k)
     return f[k];
 }
 
+static long long fast_doubling(long long k)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    long long f[2] = {0, 1};
+
+    if (k < 2)
+        return k;
+
+    int x = 64;
+    long long one = 1LL << 62;
+
+    while (!(k & one)) {
+        one >>= 1;
+        x--;
+    }
+    x--;
+
+    for (int i = 0; i < x; i++) {
+        long long temp;
+        temp = f[0];
+        f[0] = f[0] * (2 * f[1] - f[0]);
+        f[1] = f[1] * f[1] + temp * temp;
+        if (k & one) {
+            f[1] = f[0] + f[1];
+            f[0] = f[1] - f[0];
+        }
+        one >>= 1;
+    }
+    return f[0];
+}
+
+static long long fast_doubling_clz(long long k)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    long long f[2] = {0, 1};
+
+    if (k < 2)
+        return k;
+
+    int x = 64 - __builtin_clzll(k);
+    long long what = 1 << x - 1;
+
+    for (int i = 0; i < x; i++) {
+        long long temp;
+        temp = f[0];
+        f[0] = f[0] * (2 * f[1] - f[0]);
+        f[1] = f[1] * f[1] + temp * temp;
+        if (k & what) {
+            f[1] = f[0] + f[1];
+            f[0] = f[1] - f[0];
+        }
+        what >>= 1;
+    }
+    return f[0];
+}
+
+#define MAX 120
+
+typedef struct _BigN {
+    int digits;
+    char num[MAX];
+} BigN;
+
+static inline void reverse(BigN *str)
+{
+    char d = str->digits - 1;
+    for (int i = 0; i < str->digits / 2; i++, d--) {
+        *(str->num + i) ^= *(str->num + d);
+        *(str->num + d) ^= *(str->num + i);
+        *(str->num + i) ^= *(str->num + d);
+    }
+}
+
+static inline void char_to_int(BigN *str)
+{
+    for (int i = 0; i < str->digits; i++) {
+        *(str->num + i) -= 48;
+    }
+}
+
+static inline void int_to_char(BigN *str)
+{
+    for (int i = 0; i < str->digits; i++) {
+        *(str->num + i) += '0';
+    }
+}
+
+static inline void handle_carry(
+    BigN *str)  // the string is reversed and format is int
+{
+    for (int i = 0; i < str->digits; i++) {
+        *(str->num + (i + 1)) += *(str->num + i) / 10;
+        *(str->num + i) %= 10;
+    }
+    if (*(str->num + str->digits))
+        str->digits++;
+    *(str->num + str->digits) = '\0';
+}
+
+void addBigN(BigN *x, BigN *y, BigN *output)
+{
+    reverse(x);
+    reverse(y);
+    char_to_int(x);
+    char_to_int(y);
+    output->digits = x->digits > y->digits ? x->digits : y->digits;
+    for (int i = 0; i < output->digits; i++) {
+        *(output->num + i) = *(x->num + i) + *(y->num + i);
+    }
+    handle_carry(output);
+    reverse(x);
+    reverse(y);
+    reverse(output);
+    int_to_char(x);
+    int_to_char(y);
+    int_to_char(output);
+}
+
+static char fib_sequence_str(long long k, char *buf)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    // BigN f[k + 2];
+    BigN *f = vmalloc(sizeof(BigN) * (k + 2));
+    for (int i = 0; i < k + 2; i++) {
+        memset(f[i].num, 0, MAX);
+    }
+
+    f[0].digits = 1;
+    *(f[0].num + 0) = '0';
+    *(f[0].num + 1) = 0;
+    f[1].digits = 1;
+    *(f[1].num + 0) = '1';
+    *(f[1].num + 1) = 0;
+
+    if (k < 2) {
+        copy_to_user(buf, f[k].num, 120);
+        return (long long) f[k].num;
+    }
+
+    for (int i = 2; i <= k; i++) {
+        addBigN(&f[i - 2], &f[i - 1], &f[i]);
+    }
+    copy_to_user(buf, f[k].num, 120);
+    return (long long) f[k].digits;
+}
+
 static int fib_open(struct inode *inode, struct file *file)
 {
     if (!mutex_trylock(&fib_mutex)) {
@@ -60,7 +208,7 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence(*offset);
+    return (ssize_t) fib_sequence_str(*offset, buf);
 }
 
 /* write operation is skipped */
@@ -69,7 +217,30 @@ static ssize_t fib_write(struct file *file,
                          size_t size,
                          loff_t *offset)
 {
-    return 1;
+    ktime_t ktime;
+    switch (size) {
+    case 0:
+        ktime = ktime_get();
+        fib_sequence(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 1:
+        ktime = ktime_get();
+        fast_doubling(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 2:
+        ktime = ktime_get();
+        fast_doubling_clz(*offset);
+        ktime = ktime_sub(ktime_get(), ktime);
+    case 3:
+        ktime = ktime_get();
+        fib_sequence_str(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+    default:
+        return 1;
+    }
+    return (ssize_t) ktime_to_ns(ktime);
 }
 
 static loff_t fib_device_lseek(struct file *file, loff_t offset, int orig)
