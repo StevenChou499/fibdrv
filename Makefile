@@ -44,7 +44,7 @@ test:
 	$(MAKE) unload
 	make
 	$(MAKE) load
-	sudo taskset 3 ./client_plot > out
+	sudo ./client > out
 	$(MAKE) unload
 	gnuplot fib_fast.gp
 	gnuplot fib_nor.gp

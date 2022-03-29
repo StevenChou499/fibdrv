@@ -159,11 +159,9 @@ void addBigN(BigN *x, BigN *y, BigN *output)
     int_to_char(output);
 }
 
-static char fib_sequence_str(long long k, char *buf)
+static long long fib_sequence_str(long long k, char *buf)
 {
-    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
-    // BigN f[k + 2];
-    BigN *f = vmalloc(sizeof(BigN) * (k + 2));
+    BigN *f = (BigN *) vmalloc(sizeof(BigN) * (k + 2));
     for (int i = 0; i < k + 2; i++) {
         memset(f[i].num, 0, MAX);
     }
@@ -184,7 +182,7 @@ static char fib_sequence_str(long long k, char *buf)
         addBigN(&f[i - 2], &f[i - 1], &f[i]);
     }
     copy_to_user(buf, f[k].num, 120);
-    return (long long) f[k].digits;
+    return f[k].digits;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -233,10 +231,12 @@ static ssize_t fib_write(struct file *file,
         ktime = ktime_get();
         fast_doubling_clz(*offset);
         ktime = ktime_sub(ktime_get(), ktime);
+        break;
     case 3:
         ktime = ktime_get();
         fib_sequence_str(*offset, buf);
         ktime = ktime_sub(ktime_get(), ktime);
+        break;
     default:
         return 1;
     }
