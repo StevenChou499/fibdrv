@@ -19,7 +19,7 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
+#define MAX_LENGTH 500
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
@@ -29,7 +29,7 @@ static DEFINE_MUTEX(fib_mutex);
 static long long fib_sequence(long long k)
 {
     /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
-    long long f[k + 2];
+    long long *f = vmalloc(sizeof(long long) * (k + 2));
 
     f[0] = 0;
     f[1] = 1;
@@ -81,7 +81,7 @@ static long long fast_doubling_clz(long long k)
         return k;
 
     int x = 64 - __builtin_clzll(k);
-    long long what = 1 << x - 1;
+    long long what = 1 << (x - 1);
 
     for (int i = 0; i < x; i++) {
         long long temp;
@@ -159,7 +159,7 @@ void addBigN(BigN *x, BigN *y, BigN *output)
     int_to_char(output);
 }
 
-static long long fib_sequence_str(long long k, char *buf)
+static long long fib_sequence_str(long long k, const char *buf)
 {
     BigN *f = (BigN *) vmalloc(sizeof(BigN) * (k + 2));
     for (int i = 0; i < k + 2; i++) {
