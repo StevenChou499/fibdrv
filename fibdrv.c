@@ -187,6 +187,231 @@ static long long fib_sequence_str(long long k, const char *buf)
     // return f[k].digits;
 }
 
+static inline void copy_data(BigN *copier, BigN *copied)
+{
+    for (int i = 0; i <= copied->digits; i++)
+        *(copier->num + i) = *(copied->num + i);
+    copier->digits = copied->digits;
+}
+
+void addBigN_3(BigN *x, BigN *y, BigN *output)
+{
+    reverse(x);
+    reverse(y);
+    char_to_int(x);
+    char_to_int(y);
+    output->digits = x->digits > y->digits ? x->digits : y->digits;
+    for (int i = 0; i < output->digits; i++) {
+        *(output->num + i) = *(x->num + i) + *(y->num + i);
+    }
+    handle_carry(output);
+    reverse(x);
+    reverse(y);
+    reverse(output);
+    int_to_char(x);
+    int_to_char(y);
+    int_to_char(output);
+}
+
+void addBigN_2(BigN *x, BigN *output)
+{
+    reverse(x);
+    char_to_int(x);
+    reverse(output);
+    char_to_int(output);
+    output->digits = x->digits > output->digits ? x->digits : output->digits;
+    for (int i = 0; i < output->digits; i++) {
+        *(output->num + i) = *(x->num + i) + *(output->num + i);
+    }
+    handle_carry(output);
+    reverse(x);
+    reverse(output);
+    int_to_char(x);
+    int_to_char(output);
+}
+
+static inline void handle_regroup(
+    BigN *str)  // the string is reversed and format is int
+{
+    for (int i = 0; i < str->digits; i++) {
+        if (*(str->num + i) < 0) {
+            *(str->num + i) += 10;
+            *(str->num + (i + 1)) -= 1;
+        }
+    }
+    while (!*(str->num + str->digits))
+        str->digits--;
+    *(str->num + ++str->digits) = '\0';
+}
+
+static inline BigN *multiply_by_2(BigN *output)
+{
+    reverse(output);
+    for (int i = 0; i < output->digits; i++) {
+        *(output->num + i) -= '0';
+        *(output->num + i) <<= 1;
+    }
+    handle_carry(output);
+    for (int i = 0; i < output->digits; i++) {
+        *(output->num + i) += '0';
+    }
+    reverse(output);
+    return output;
+}
+
+static inline BigN *square(BigN *side)
+{
+    reverse(side);
+    char_to_int(side);
+    BigN *temp0 = vmalloc(sizeof(BigN));
+    BigN *temp1 = vmalloc(sizeof(BigN));
+    copy_data(temp0, side);
+    copy_data(temp1, side);
+    memset(side->num, 0, MAX);
+    int length = temp0->digits;
+    for (int j = 0; j < temp0->digits; j++) {
+        *(side->num + j) += *(temp0->num + j) * *(temp1->num + 0);
+        handle_carry(side);
+    }
+    for (int i = 1; i < length; i++) {
+        for (int j = 0; j < temp0->digits; j++) {
+            *(temp0->num + j) *= 10;
+        }
+        handle_carry(temp0);
+        side->digits =
+            side->digits > temp0->digits ? side->digits : temp0->digits;
+        for (int j = 0; j < temp0->digits; j++) {
+            *(side->num + j) += *(temp0->num + j) * *(temp1->num + i);
+            handle_carry(side);
+        }
+    }
+    vfree(temp0);
+    vfree(temp1);
+    reverse(side);
+    int_to_char(side);
+    return side;
+}
+
+static inline BigN *multiplication_2(BigN *x, BigN *output)
+{
+    reverse(x);
+    char_to_int(x);
+    reverse(output);
+    char_to_int(output);
+    BigN *temp0 = vmalloc(sizeof(BigN));
+    BigN *temp1 = vmalloc(sizeof(BigN));
+    copy_data(temp0, x);
+    copy_data(temp1, output);
+    memset(output->num, 0, MAX);
+    output->digits = output->digits > x->digits ? output->digits : x->digits;
+    for (int j = 0; j < temp0->digits; j++) {
+        *(output->num + j) += *(temp0->num + j) * *(temp1->num + 0);
+    }
+    handle_carry(output);
+    for (int i = 1; i < temp1->digits; i++) {
+        for (int j = 0; j < temp0->digits; j++) {
+            *(temp0->num + j) *= 10;
+        }
+        handle_carry(temp0);
+        output->digits =
+            output->digits > temp0->digits ? output->digits : temp0->digits;
+        for (int j = 0; j < temp0->digits; j++) {
+            *(output->num + j) += *(temp0->num + j) * *(temp1->num + i);
+            handle_carry(output);
+        }
+        handle_carry(output);
+    }
+    vfree(temp0);
+    vfree(temp1);
+    reverse(output);
+    int_to_char(output);
+    reverse(x);
+    int_to_char(x);
+    return output;
+}
+
+void minusBigN_2_former(BigN *output, BigN *x)  // output > x
+{
+    reverse(x);
+    reverse(output);
+    char_to_int(x);
+    char_to_int(output);
+    output->digits = x->digits;
+    for (int i = 0; i < x->digits; i++) {
+        *(output->num + i) = *(output->num + i) - *(x->num + i);
+    }
+    handle_regroup(output);
+    reverse(x);
+    reverse(output);
+    int_to_char(x);
+    int_to_char(output);
+}
+
+void minusBigN_2_latter(BigN *x, BigN *output)  // x > output
+{
+    reverse(x);
+    reverse(output);
+    char_to_int(x);
+    char_to_int(output);
+    output->digits = x->digits;
+    for (int i = 0; i < x->digits; i++) {
+        *(output->num + i) = *(x->num + i) - *(output->num + i);
+    }
+    handle_regroup(output);
+    reverse(x);
+    reverse(output);
+    int_to_char(x);
+    int_to_char(output);
+}
+
+static long long fib_sequence_fast_db_str(long long k, const char *buf)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    BigN *f = vmalloc(sizeof(BigN) * 2);
+    for (int i = 0; i < 2; i++) {
+        memset(f[i].num, 0, MAX);
+    }
+    f[0].digits = 1;
+    *(f[0].num + 0) = '0';
+    *(f[0].num + 1) = 0;
+    f[1].digits = 1;
+    *(f[1].num + 0) = '1';
+    *(f[1].num + 1) = 0;
+
+    if (k < 2) {
+        copy_to_user(buf, f[k].num, 120);
+        return 1;
+    }
+
+    int x = 64;
+    long long what = 1LL << 62;
+    while (!(k & what)) {
+        what >>= 1;
+        x--;
+    }
+    x--;
+
+    static BigN temp0, temp1;
+
+    for (int i = 0; i < x; i++) {
+        memset(&temp0, 0, MAX);
+        memset(&temp0, 0, MAX);
+        copy_data(&temp0, &f[0]);
+        copy_data(&temp1, &f[1]);
+        minusBigN_2_former(multiply_by_2((f + 1)), (f + 0));
+        multiplication_2((f + 1), (f + 0));
+        addBigN_3(square(&temp1), square(&temp0), (f + 1));
+        if (k & what) {
+            addBigN_2((f + 0), (f + 1));
+            minusBigN_2_latter((f + 1), (f + 0));
+        }
+        what >>= 1;
+    }
+    copy_to_user(buf, f[0].num, 120);
+    vfree(f);
+    return 1;
+}
+
 static int fib_open(struct inode *inode, struct file *file)
 {
     if (!mutex_trylock(&fib_mutex)) {
@@ -208,7 +433,7 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence_str(*offset, buf);
+    return (ssize_t) fib_sequence_fast_db_str(*offset, buf);
 }
 
 /* write operation is skipped */
