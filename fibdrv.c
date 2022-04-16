@@ -458,7 +458,7 @@ static long long fib_long_iter(long long k, const char *buf)
         return 1;
     }
     c = vmalloc(sizeof(bn));
-    for (long long j = 0; j < i - 1ULL; j++) {
+    for (long long j = 0; j < k - 1ULL; j++) {
         c = add_bn_3(a, b, c);
         free_bn(a);
         a = b;
