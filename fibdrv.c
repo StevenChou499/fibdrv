@@ -19,7 +19,8 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 500
+#define MAX_LENGTH 92
+#define ARRAY_SIZE 120
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
@@ -364,6 +365,119 @@ void minusBigN_2_latter(BigN *x, BigN *output)  // x > output
     int_to_char(output);
 }
 
+#define ULL_CARRY 1000000000000000000ULL
+#define ULL_MAX 18446744073709551615ULL
+#define RESULT_INDEX(i) *(result->num_arr + i)
+
+typedef unsigned long long ullong;
+
+typedef struct _bn {
+    char length;
+    unsigned long long *num_arr;
+} bn;
+
+static inline bn *create_bn(ullong x)
+{
+    bn *new = vmalloc(sizeof(bn));
+    new->length = 1;
+    new->num_arr = vmalloc(sizeof(ullong));
+    *(new->num_arr + 0) = x;
+    return new;
+}
+
+static inline void free_bn(bn *x)
+{
+    vfree(x->num_arr);
+    vfree(x);
+}
+
+static inline void handle_carry_long(bn *result)
+{
+    for (int i = 0; i < result->length - 1; i++) {
+        RESULT_INDEX(i + 1) += RESULT_INDEX(i) / ULL_CARRY;
+        RESULT_INDEX(i) %= ULL_CARRY;
+    }
+    if (RESULT_INDEX(result->length - 1) > ULL_CARRY) {
+        ullong *new_array = vmalloc(sizeof(ullong) * (result->length + 1));
+        for (int i = 0; i < result->length - 1; i++)
+            new_array[i] = RESULT_INDEX(i);
+        new_array[result->length] =
+            RESULT_INDEX(result->length - 1) / ULL_CARRY;
+        new_array[result->length - 1] =
+            RESULT_INDEX(result->length - 1) % ULL_CARRY;
+        result->length++;
+        vfree(result->num_arr);
+        result->num_arr = new_array;
+    }
+}
+
+static inline bn *add_bn_3(bn *small,
+                           bn *large,
+                           bn *result)  // result = large + small
+{
+    // result = vmalloc(sizeof(bn));  // allocate space for result
+    result->length = large->length;
+    result->num_arr = vmalloc(sizeof(ullong) * result->length);
+
+    for (int i = 0; i < small->length; i++)
+        RESULT_INDEX(i) = *(large->num_arr + i) + *(small->num_arr + i);
+    for (int i = small->length; i < large->length; i++)
+        RESULT_INDEX(i) = *(large->num_arr + i);
+    handle_carry_long(result);
+    return result;
+}
+
+/*void print_number(bn *x)
+{
+    printf("%llu", *(x->num_arr + x->length - 1));
+    for(char i = x->length - 2; i >= 0; i--){
+        printf("%018llu", *(x->num_arr + i));
+    }
+    printf("\n");
+    free_bn(x);
+}*/
+
+static long long fib_long_iter(long long k, const char *buf)
+{
+    bn *a, *b, *c;
+    char tmp[ARRAY_SIZE];
+    a = create_bn(0ULL);
+    b = create_bn(1ULL);
+    if (k == 0) {
+        free_bn(b);
+        snprintf(tmp, ARRAY_SIZE, "%llu", *(a->num_arr + a->length - 1));
+        free_bn(a);
+        copy_to_user(buf, tmp, ARRAY_SIZE);
+        return 1;
+    }
+    if (k == 1 || k == 2) {
+        free_bn(a);
+        snprintf(tmp, ARRAY_SIZE, "%llu", *(b->num_arr + b->length - 1));
+        free_bn(b);
+        copy_to_user(buf, tmp, ARRAY_SIZE);
+        return 1;
+    }
+    c = vmalloc(sizeof(bn));
+    for (long long j = 0; j < i - 1ULL; j++) {
+        c = add_bn_3(a, b, c);
+        free_bn(a);
+        a = b;
+        b = c;
+    }
+    free_bn(a);
+    snprintf(tmp, ARRAY_SIZE, "%llu", *(c->num_arr + c->length - 1));
+    int l = strlen(tmp);
+    int w = 0;
+    for (int i = c->length - 2; i >= 0; i--) {
+        snprintf(tmp + l + w, ARRAY_SIZE, "%018llu", *(c->num_arr + i));
+        w += 18;
+    }
+    snprintf(tmp + l + w, ARRAY_SIZE, "\n");
+    copy_to_user(buf, tmp, ARRAY_SIZE);
+    free_bn(c);
+    return 1;
+}
+
 static long long fib_sequence_fast_db_str(long long k, const char *buf)
 {
     /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
@@ -462,6 +576,11 @@ static ssize_t fib_write(struct file *file,
     case 3:
         ktime = ktime_get();
         fib_sequence_str(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 4:
+        ktime = ktime_get();
+        fib_long_iter(*offset, buf);
         ktime = ktime_sub(ktime_get(), ktime);
         break;
     default:
