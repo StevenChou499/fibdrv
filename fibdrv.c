@@ -19,8 +19,8 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
-#define ARRAY_SIZE 120
+#define MAX_LENGTH 500
+#define ARRAY_LENGTH 120
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
@@ -182,7 +182,7 @@ static long long fib_sequence_str(long long k, const char *buf)
     for (int i = 2; i <= k; i++) {
         addBigN(&f[i - 2], &f[i - 1], &f[i]);
     }
-    copy_to_user(buf, f[k].num, 120);
+    copy_to_user((void *) buf, f[k].num, 120);
     vfree(f);
     return 1;
     // return f[k].digits;
@@ -365,7 +365,7 @@ void minusBigN_2_latter(BigN *x, BigN *output)  // x > output
     int_to_char(output);
 }
 
-#define ULL_CARRY 1000000000000000000ULL
+#define ULL_CARRY 1000000000ULL
 #define ULL_MAX 18446744073709551615ULL
 #define RESULT_INDEX(i) *(result->num_arr + i)
 
@@ -411,6 +411,7 @@ static inline void handle_carry_long(bn *result)
     }
 }
 
+/*
 static inline bn *add_bn_3(bn *small,
                            bn *large,
                            bn *result)  // result = large + small
@@ -424,6 +425,115 @@ static inline bn *add_bn_3(bn *small,
     for (int i = small->length; i < large->length; i++)
         RESULT_INDEX(i) = *(large->num_arr + i);
     handle_carry_long(result);
+    return result;
+}*/
+
+static inline bn *copy_data_long(bn *result)
+{
+    bn *dup = vmalloc(sizeof(bn));
+    dup->length = result->length;
+    dup->num_arr = vmalloc(sizeof(ullong) * result->length);
+    for (int i = 0; i < result->length; i++)
+        *(dup->num_arr + i) = RESULT_INDEX(i);
+    return dup;
+}
+
+static inline void copy_data_long_2(bn *result, bn *source)
+{
+    source->length = result->length;
+    source->num_arr = vmalloc(sizeof(ullong) * result->length);
+    for (int i = 0; i < result->length; i++)
+        *(source->num_arr + i) = RESULT_INDEX(i);
+}
+
+static inline bn *add_bn_2(bn *summand, bn *result)
+{
+    for (int i = 0; i < summand->length; i++)
+        RESULT_INDEX(i) += *(summand->num_arr + i);
+    handle_carry_long(result);
+    return result;
+}
+
+static inline bn *sub_bn_2(bn *small, bn *result)  // result = result - small
+{
+    for (int i = 0; i < small->length; i++)
+        RESULT_INDEX(i) = RESULT_INDEX(i) - *(small->num_arr + i);
+    for (int i = 0; i < small->length; i++) {
+        if (RESULT_INDEX(i) > ULL_CARRY) {
+            RESULT_INDEX(i + 1) -= 1;
+            RESULT_INDEX(i) += ULL_CARRY;
+        }
+    }
+    int new_length = result->length - 1;
+    if (!RESULT_INDEX(new_length)) {
+        while (!RESULT_INDEX(new_length))
+            new_length--;
+        new_length++;
+        ullong *new_array = vmalloc(sizeof(ullong) * new_length);
+        for (int i = 0; i < new_length; i++)
+            *(new_array + i) = RESULT_INDEX(i);
+        vfree(result->num_arr);
+        result->num_arr = new_array;
+        result->length = new_length;
+    }
+    return result;
+}
+
+static inline bn *multiply_by2(bn *result)
+{
+    for (int i = 0; i < result->length; i++)
+        RESULT_INDEX(i) <<= 1;
+    handle_carry_long(result);
+    return result;
+}
+
+static inline bn *square_long(bn *result)
+{
+    bn *dup = copy_data_long(result);
+    bn *tmp = copy_data_long(result);
+    vfree(result->num_arr);
+    result->length <<= 1;
+    result->num_arr = vmalloc(sizeof(ullong) * result->length--);
+    for (int i = 0; i < result->length; i++)
+        RESULT_INDEX(i) = 0ULL;
+    for (int i = 0; i < tmp->length; i++)
+        RESULT_INDEX(i) = *(tmp->num_arr + i) * *(dup->num_arr + 0);
+    handle_carry_long(result);
+    for (int i = 1; i < dup->length; i++) {
+        for (int j = 0; j < tmp->length; j++)
+            *(tmp->num_arr + j) *= ULL_CARRY;
+        handle_carry_long(tmp);
+        for (int j = 0; j < tmp->length; j++)
+            RESULT_INDEX(j) += *(tmp->num_arr + j) * *(dup->num_arr + i);
+        handle_carry_long(result);
+    }
+    free_bn(dup);
+    free_bn(tmp);
+    return result;
+}
+
+static inline bn *multiplication(bn *multiplicand, bn *result)
+{
+    bn *dup = copy_data_long(result);
+    bn *tmp = copy_data_long(multiplicand);
+    vfree(result->num_arr);
+    result->length += multiplicand->length;
+    result->num_arr = vmalloc(sizeof(ullong) * result->length--);
+    for (int i = 0; i < result->length; i++)
+        RESULT_INDEX(i) = 0ULL;
+    for (int i = 0; i < tmp->length; i++)
+        RESULT_INDEX(i) = *(tmp->num_arr + i) * *(dup->num_arr + 0);
+    handle_carry_long(result);
+    for (int i = 1; i < dup->length; i++) {
+        for (int j = 0; j < tmp->length; j++)
+            *(tmp->num_arr + j) *= ULL_CARRY;
+        handle_carry_long(tmp);
+        for (int j = 0; j < tmp->length; j++)
+            RESULT_INDEX(j) += *(tmp->num_arr + j) * *(dup->num_arr + i);
+        handle_carry_long(result);
+    }
+    free_bn(dup);
+    free_bn(tmp);
     return result;
 }
 
@@ -439,42 +549,156 @@ static inline bn *add_bn_3(bn *small,
 
 static long long fib_long_iter(long long k, const char *buf)
 {
-    bn *a, *b, *c;
-    char tmp[ARRAY_SIZE];
+    bn *a, *b;
+    char tmp[ARRAY_LENGTH];
     a = create_bn(0ULL);
     b = create_bn(1ULL);
     if (k == 0) {
         free_bn(b);
-        snprintf(tmp, ARRAY_SIZE, "%llu", *(a->num_arr + a->length - 1));
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(a->num_arr + a->length - 1));
         free_bn(a);
-        copy_to_user(buf, tmp, ARRAY_SIZE);
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
         return 1;
     }
     if (k == 1 || k == 2) {
         free_bn(a);
-        snprintf(tmp, ARRAY_SIZE, "%llu", *(b->num_arr + b->length - 1));
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(b->num_arr + b->length - 1));
         free_bn(b);
-        copy_to_user(buf, tmp, ARRAY_SIZE);
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
         return 1;
     }
-    c = vmalloc(sizeof(bn));
     for (long long j = 0; j < k - 1ULL; j++) {
-        c = add_bn_3(a, b, c);
+        bn temp;
+        add_bn_2(a, b);
+        copy_data_long_2(b, &temp);
+        sub_bn_2(a, &temp);
         free_bn(a);
-        a = b;
-        b = c;
+        a = vmalloc(sizeof(bn));
+        copy_data_long_2(&temp, a);
     }
-    free_bn(a);
-    snprintf(tmp, ARRAY_SIZE, "%llu", *(c->num_arr + c->length - 1));
+    snprintf(tmp, ARRAY_LENGTH, "%llu", *(b->num_arr + b->length - 1));
     int l = strlen(tmp);
     int w = 0;
-    for (int i = c->length - 2; i >= 0; i--) {
-        snprintf(tmp + l + w, ARRAY_SIZE, "%018llu", *(c->num_arr + i));
+    for (int i = b->length - 2; i >= 0; i--) {
+        snprintf(tmp + l + w, ARRAY_LENGTH, "%018llu", *(b->num_arr + i));
         w += 18;
     }
-    snprintf(tmp + l + w, ARRAY_SIZE, "\n");
-    copy_to_user(buf, tmp, ARRAY_SIZE);
-    free_bn(c);
+    copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+    free_bn(a);
+    free_bn(b);
+    return 1;
+}
+
+static long long fib_fast_db_long(long long k, const char *buf)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    bn *f0 = create_bn(0ULL);
+    bn *f1 = create_bn(1ULL);
+    char tmp[ARRAY_LENGTH];
+
+    if (k == 0) {
+        free_bn(f1);
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(f0->num_arr + f0->length - 1));
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+        free_bn(f0);
+        return 1;
+    }
+    if (k < 3) {
+        free_bn(f0);
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(f1->num_arr + f1->length - 1));
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+        free_bn(f1);
+        return 1;
+    }
+
+    int x = 64;
+    long long what = 1LL << 62;
+    while (!(k & what)) {
+        what >>= 1;
+        x--;
+    }
+    x--;
+
+    for (int i = 0; i < x; i++) {
+        bn *temp0 = copy_data_long(f0);
+        bn *temp1 = copy_data_long(f1);
+        f0 = multiplication(sub_bn_2(f0, multiply_by2(temp1)), f0);
+        f1 = add_bn_2(square_long(temp0), square_long(f1));
+        if (k & what) {
+            add_bn_2(f0, f1);
+            bn *temp2 = copy_data_long(f1);
+            sub_bn_2(f0, temp2);
+            free_bn(f0);
+            f0 = temp2;
+        }
+        what >>= 1;
+        free_bn(temp0);
+        free_bn(temp1);
+    }
+    free_bn(f1);
+    snprintf(tmp, ARRAY_LENGTH, "%llu", *(f0->num_arr + f0->length - 1));
+    int l = strlen(tmp);
+    int w = 0;
+    for (int i = f0->length - 2; i >= 0; i--) {
+        snprintf(tmp + l + w, ARRAY_LENGTH, "%09llu", *(f0->num_arr + i));
+        w += 9;
+    }
+    // snprintf(tmp + l + w, ARRAY_LENGTH, "\n");
+    copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+    free_bn(f0);
+    return 1;
+}
+
+static long long fib_fast_db_long_clz(long long k, const char *buf)
+{
+    bn *f0 = create_bn(0ULL);
+    bn *f1 = create_bn(1ULL);
+    char tmp[ARRAY_LENGTH];
+
+    if (k == 0) {
+        free_bn(f1);
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(f0->num_arr + f0->length - 1));
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+        free_bn(f0);
+        return 1;
+    }
+    if (k < 3) {
+        free_bn(f0);
+        snprintf(tmp, ARRAY_LENGTH, "%llu", *(f1->num_arr + f1->length - 1));
+        copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+        free_bn(f1);
+        return 1;
+    }
+
+    int x = 64 - __builtin_clzll(k);
+    long long what = 1 << (x - 1);
+
+    for (int i = 0; i < x; i++) {
+        bn *temp0 = copy_data_long(f0);
+        bn *temp1 = copy_data_long(f1);
+        f0 = multiplication(sub_bn_2(f0, multiply_by2(temp1)), f0);
+        f1 = add_bn_2(square_long(temp0), square_long(f1));
+        if (k & what) {
+            add_bn_2(f0, f1);
+            bn *temp2 = copy_data_long(f1);
+            sub_bn_2(f0, temp2);
+            free_bn(f0);
+            f0 = temp2;
+        }
+        what >>= 1;
+        free_bn(temp0);
+        free_bn(temp1);
+    }
+    free_bn(f1);
+    snprintf(tmp, ARRAY_LENGTH, "%llu", *(f0->num_arr + f0->length - 1));
+    int l = strlen(tmp);
+    int w = 0;
+    for (int i = f0->length - 2; i >= 0; i--) {
+        snprintf(tmp + l + w, ARRAY_LENGTH, "%09llu", *(f0->num_arr + i));
+        w += 9;
+    }
+    copy_to_user((void *) buf, tmp, ARRAY_LENGTH);
+    free_bn(f0);
     return 1;
 }
 
@@ -493,7 +717,7 @@ static long long fib_sequence_fast_db_str(long long k, const char *buf)
     *(f[1].num + 1) = 0;
 
     if (k < 2) {
-        copy_to_user(buf, f[k].num, 120);
+        copy_to_user((void *) buf, f[k].num, 120);
         return 1;
     }
 
@@ -521,7 +745,50 @@ static long long fib_sequence_fast_db_str(long long k, const char *buf)
         }
         what >>= 1;
     }
-    copy_to_user(buf, f[0].num, 120);
+    copy_to_user((void *) buf, f[0].num, 120);
+    vfree(f);
+    return 1;
+}
+
+static long long fib_sequence_fast_db_str_clz(long long k, const char *buf)
+{
+    /* FIXME: C99 variable-length array (VLA) is not allowed in Linux kernel. */
+    BigN *f = vmalloc(sizeof(BigN) * 2);
+    for (int i = 0; i < 2; i++) {
+        memset(f[i].num, 0, MAX);
+    }
+    f[0].digits = 1;
+    *(f[0].num + 0) = '0';
+    *(f[0].num + 1) = 0;
+    f[1].digits = 1;
+    *(f[1].num + 0) = '1';
+    *(f[1].num + 1) = 0;
+
+    if (k < 2) {
+        copy_to_user((void *) buf, f[k].num, 120);
+        return 1;
+    }
+
+    int x = 64 - __builtin_clzll(k);
+    long long what = 1 << (x - 1);
+
+    static BigN temp0, temp1;
+
+    for (int i = 0; i < x; i++) {
+        memset(&temp0, 0, MAX);
+        memset(&temp0, 0, MAX);
+        copy_data(&temp0, &f[0]);
+        copy_data(&temp1, &f[1]);
+        minusBigN_2_former(multiply_by_2((f + 1)), (f + 0));
+        multiplication_2((f + 1), (f + 0));
+        addBigN_3(square(&temp1), square(&temp0), (f + 1));
+        if (k & what) {
+            addBigN_2((f + 0), (f + 1));
+            minusBigN_2_latter((f + 1), (f + 0));
+        }
+        what >>= 1;
+    }
+    copy_to_user((void *) buf, f[0].num, 120);
     vfree(f);
     return 1;
 }
@@ -547,7 +814,7 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
-    return (ssize_t) fib_sequence_fast_db_str(*offset, buf);
+    return (ssize_t) fib_fast_db_long(*offset, buf);
 }
 
 /* write operation is skipped */
@@ -580,7 +847,27 @@ static ssize_t fib_write(struct file *file,
         break;
     case 4:
         ktime = ktime_get();
+        fib_sequence_fast_db_str(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 5:
+        ktime = ktime_get();
+        fib_sequence_fast_db_str_clz(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 6:
+        ktime = ktime_get();
         fib_long_iter(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 7:
+        ktime = ktime_get();
+        fib_fast_db_long(*offset, buf);
+        ktime = ktime_sub(ktime_get(), ktime);
+        break;
+    case 8:
+        ktime = ktime_get();
+        fib_fast_db_long_clz(*offset, buf);
         ktime = ktime_sub(ktime_get(), ktime);
         break;
     default:

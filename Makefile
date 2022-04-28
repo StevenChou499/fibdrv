@@ -37,18 +37,16 @@ check: all
 	$(MAKE) load
 	sudo ./client > out
 	$(MAKE) unload
-	@#diff -u out scripts/expected.txt && $(call pass)
-	@scripts/verify.py
+	diff -u out scripts/expected.txt && $(call pass)
+	scripts/verify.py
 
 test:
 	$(MAKE) unload
 	make
 	$(MAKE) load
-	sudo ./client > out
+	sudo taskset 0x3 ./client > out
 	$(MAKE) unload
-	gnuplot fib_fast.gp
-	gnuplot fib_nor.gp
-	gnuplot fib_comp.gp
+	gnuplot All_Fibonacci_Speed_for_First500_Kernel.gp
 
 what:
 	$(MAKE) unload
