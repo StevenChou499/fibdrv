@@ -24,7 +24,6 @@ int main()
     long long sz;
 
     char buf[300];
-    // char write_buf[] = "testing writing";
     int offset = 1000; /* TODO: try test something bigger than the limit */
     struct timespec start, end;
     long long total[1000];
@@ -51,11 +50,6 @@ int main()
             }
             time /= 950;
             printf("%lld ", time);
-            // printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
-            // (start.tv_sec * 1e9 + start.tv_nsec)));
-            // printf("%lld ", (long long) ((end.tv_sec * 1e9 + end.tv_nsec) -
-            // (start.tv_sec * 1e9 + start.tv_nsec)) -
-            // sz);
         }
         printf("\n");
     }
