@@ -57,3 +57,10 @@ what:
 	$(MAKE) unload
 	@diff -u out scripts/expected.txt && $(call pass)
 	@scripts/verify.py
+
+plot: all
+	$(MAKE) unload
+	$(MAKE) load
+	sudo ./client > plot
+	$(MAKE) unload
+	gnuplot fib_comp.gp
