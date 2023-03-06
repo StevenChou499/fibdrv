@@ -1848,7 +1848,9 @@ int main()
 ```
 
 可以得到更加乾淨的比較結果：
+
 ![](https://i.imgur.com/KIuolKK.png)
+
 可以看到經過統計移除極端值後，圖表滑順許多。
 
 接下來會以 `long_fast_doubling_clz` 進行實做的加速：
