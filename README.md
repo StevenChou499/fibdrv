@@ -4,6 +4,10 @@ Linux kernel module that creates device /dev/fibonacci.  Writing to this device
 should have no effect, however reading at offset k should return the kth
 fibonacci number.
 
+## Development Log
+
+[Development Log Link](https://github.com/StevenChou499/fibdrv/blob/master/Development%20Log.md)
+
 ## References
 * [The Linux Kernel Module Programming Guide](https://sysprog21.github.io/lkmpg/)
 * [Writing a simple device driver](https://www.apriorit.com/dev-blog/195-simple-driver-for-linux-os)
